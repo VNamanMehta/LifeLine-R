@@ -1,0 +1,12 @@
+{
+  "name": "Hasura",
+  "claims": {
+    "https://hasura.io/jwt/claims": {
+      "x-hasura-allowed-roles": [
+        "{{user.public_metadata.role}}"
+      ],
+      "x-hasura-default-role": "{{user.public_metadata.role}}",
+      "x-hasura-user-id": "{{user.public_metadata.db_id}}"
+    }
+  }
+}
