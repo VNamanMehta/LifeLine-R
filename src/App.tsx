@@ -1,21 +1,35 @@
-import { Routes, Route } from 'react-router-dom';
-import { RootLayout } from './components/RootLayout';
-import { HomePage } from './pages/HomePage';
-import { SignInPage } from './pages/SignInPage';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { SignedIn, SignedOut } from '@clerk/clerk-react';
 import { SignUpPage } from './pages/SignUpPage';
+import { SignInPage } from './pages/SignInPage';
+import { CompleteProfilePage } from './pages/CompleteProfilePage.tsx';
 import { DashboardPage } from './pages/DashboardPage';
-import { SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
+import { HomePage } from './pages/HomePage';
 
-export default function App() {
+function App() {
   return (
-    <Routes>
-      <Route element={<RootLayout />}>
+    <BrowserRouter>
+      <Routes>
         {/* Public Routes */}
         <Route path="/" element={<HomePage />} />
-        <Route path="/sign-in/*" element={<SignInPage />} />
         <Route path="/sign-up" element={<SignUpPage />} />
+        <Route path="/sign-in" element={<SignInPage />} />
 
-        {/* Protected Route */}
+        {/* Protected Routes - Require Authentication */}
+        <Route
+          path="/complete-profile"
+          element={
+            <>
+              <SignedIn>
+                <CompleteProfilePage />
+              </SignedIn>
+              <SignedOut>
+                <Navigate to="/sign-in" replace />
+              </SignedOut>
+            </>
+          }
+        />
+        
         <Route
           path="/dashboard"
           element={
@@ -24,12 +38,17 @@ export default function App() {
                 <DashboardPage />
               </SignedIn>
               <SignedOut>
-                <RedirectToSignIn />
+                <Navigate to="/sign-in" replace />
               </SignedOut>
             </>
           }
         />
-      </Route>
-    </Routes>
+
+        {/* Catch all - redirect to home */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
+
+export default App;

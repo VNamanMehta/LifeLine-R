@@ -154,34 +154,3 @@ END;
 $$ language 'plpgsql';
 
 CREATE TRIGGER update_inventory_on_rsvp_trigger AFTER INSERT OR UPDATE OR DELETE ON rsvps FOR EACH ROW EXECUTE FUNCTION update_inventory_on_rsvp();
-
---- HELPER FUNCTIONS (for use by Hasura/application) ---
-
--- Function to check donation eligibility (56 days between donations)
-CREATE OR REPLACE FUNCTION is_eligible_to_donate(user_id UUID)
-RETURNS BOOLEAN AS $$
-DECLARE
-    last_donation TIMESTAMP WITH TIME ZONE;
-BEGIN
-    SELECT last_donation_date INTO last_donation FROM users WHERE id = user_id;
-    IF last_donation IS NULL THEN RETURN true; END IF;
-    RETURN (CURRENT_TIMESTAMP - last_donation) >= INTERVAL '56 days';
-END;
-$$ language 'plpgsql';
-
--- Function to find nearby camps using PostGIS
-CREATE OR REPLACE FUNCTION find_nearby_camps(user_location GEOMETRY, radius_km INTEGER DEFAULT 50)
-RETURNS SETOF camps AS $$
-BEGIN
-    RETURN QUERY
-    SELECT *
-    FROM camps
-    WHERE 
-        camps.status IN ('upcoming', 'ongoing')
-        AND ST_DWithin(camps.location, user_location, radius_km * 1000) -- Convert km to meters
-    ORDER BY ST_Distance(camps.location, user_location) ASC;
-END;
-$$ language 'plpgsql';
-
--- Verify the setup
-SELECT 'Database setup completed successfully!' as status;

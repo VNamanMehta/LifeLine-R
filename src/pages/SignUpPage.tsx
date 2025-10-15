@@ -2,8 +2,15 @@ import { useSignUp } from '@clerk/clerk-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { signUpSchema, type SignUpFormData } from '../lib/validation';
+import { z } from 'zod';
 import { Link, useNavigate } from 'react-router-dom';
+
+const signUpSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
+type SignUpFormData = z.infer<typeof signUpSchema>;
 
 export const SignUpPage = () => {
   const { isLoaded, signUp, setActive } = useSignUp();
@@ -12,64 +19,27 @@ export const SignUpPage = () => {
   const [code, setCode] = useState('');
   const [verificationError, setVerificationError] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
-  const [locationStatus, setLocationStatus] = useState<'idle' | 'fetching' | 'success' | 'error'>('idle');
+  const [signUpError, setSignUpError] = useState('');
 
-  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<SignUpFormData>({
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<SignUpFormData>({
     resolver: zodResolver(signUpSchema),
-    defaultValues: {
-      role: 'donor',
-    }
   });
-
-  const role = watch('role');
-
-  const handleGetCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setLocationStatus('error');
-      alert('Geolocation is not supported by your browser.');
-      return;
-    }
-
-    setLocationStatus('fetching');
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setValue('location', { lat: latitude, lng: longitude }, { shouldValidate: true });
-        setLocationStatus('success');
-      },
-      () => {
-        setLocationStatus('error');
-        alert('Unable to retrieve your location. Please ensure location access is enabled.');
-      }
-    );
-  };
 
   const onSubmit = async (data: SignUpFormData) => {
     if (!isLoaded) return;
 
+    setSignUpError('');
     try {
-      // Combine first and last name for the name field
-      const fullName = `${data.firstName} ${data.lastName}`.trim();
-
       await signUp.create({
         emailAddress: data.email,
         password: data.password,
-        unsafeMetadata: {
-          name: fullName,
-          firstName: data.firstName,
-          lastName: data.lastName,
-          role: data.role,
-          blood_group: data.role === 'donor' ? data.blood_group : undefined,
-          location: data.location,
-          last_donation_date: data.last_donation_date || undefined,
-        },
       });
 
       await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
       setPendingVerification(true);
     } catch (err: any) {
-      console.error("Clerk Sign Up Error:", JSON.stringify(err, null, 2));
-      alert(`Sign up failed: ${err.errors?.[0]?.longMessage || err.message || 'Unknown error'}`);
+      console.error('Sign Up Error:', err);
+      setSignUpError(err.errors?.[0]?.longMessage || 'Sign up failed. Please try again.');
     }
   };
 
@@ -84,147 +54,248 @@ export const SignUpPage = () => {
       const completeSignUp = await signUp.attemptEmailAddressVerification({ code });
       
       if (completeSignUp.status === 'complete') {
-        // Set the active session
         await setActive({ session: completeSignUp.createdSessionId });
-        
-        // Give the webhook a moment to process (optional but recommended)
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Navigate using React Router
-        navigate('/dashboard', { replace: true });
+        navigate('/complete-profile', { replace: true });
       } else {
-        // Handle other statuses
-        console.log('Sign up status:', completeSignUp.status);
         setVerificationError('Verification incomplete. Please try again.');
       }
     } catch (err: any) {
-      console.error("Clerk Verification Error:", JSON.stringify(err, null, 2));
+      console.error('Verification Error:', err);
       
-      // Handle the specific "already verified" error
       if (err.errors?.[0]?.code === 'verification_already_verified') {
-        // Try to set active session and navigate
-        try {
-          if (signUp.createdSessionId) {
-            await setActive({ session: signUp.createdSessionId });
-            navigate('/dashboard', { replace: true });
-            return;
-          }
-        } catch (navErr) {
-          console.error('Navigation error:', navErr);
+        if (signUp.createdSessionId) {
+          await setActive({ session: signUp.createdSessionId });
+          navigate('/complete-profile', { replace: true });
+          return;
         }
-        setVerificationError('This email has already been verified. Try signing in instead.');
+        setVerificationError('Already verified. Try signing in instead.');
+      } else if (err.errors?.[0]?.code === 'form_code_incorrect') {
+        setVerificationError('Incorrect code. Please try again.');
+      } else if (err.errors?.[0]?.code === 'verification_expired') {
+        setVerificationError('Code expired. Request a new one.');
       } else {
-        setVerificationError(err.errors?.[0]?.longMessage || 'Verification failed. Please check your code.');
+        setVerificationError(err.errors?.[0]?.longMessage || 'Verification failed.');
       }
     } finally {
       setIsVerifying(false);
     }
   };
 
+  const resendCode = async () => {
+    if (!isLoaded) return;
+    try {
+      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      alert('New code sent to your email!');
+      setVerificationError('');
+    } catch (err) {
+      alert('Failed to resend code.');
+    }
+  };
+
   if (pendingVerification) {
     return (
-      <div style={{ padding: '2rem', maxWidth: '400px', margin: 'auto' }}>
-        <h2>Verify Your Email</h2>
-        <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '1rem' }}>
-          We've sent a verification code to your email. Please enter it below.
-        </p>
-        <form onSubmit={onPressVerify} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <input 
-            value={code} 
-            placeholder="Enter verification code..." 
-            onChange={(e) => setCode(e.target.value)} 
-            required 
-            style={{ padding: '0.5rem', fontSize: '1rem' }}
-            disabled={isVerifying}
-          />
-          {verificationError && (
-            <p style={{ color: 'red', fontSize: '0.9rem' }}>{verificationError}</p>
-          )}
-          <button type="submit" disabled={isVerifying || !code}>
-            {isVerifying ? 'Verifying...' : 'Complete Sign Up'}
-          </button>
-          <p style={{ textAlign: 'center', fontSize: '0.9rem' }}>
-            Already verified? <Link to="/sign-in" style={{ color: 'blue' }}>Sign In</Link>
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        padding: '2rem'
+      }}>
+        <div style={{ 
+          width: '100%', 
+          maxWidth: '400px', 
+          backgroundColor: 'white', 
+          padding: '2rem', 
+          borderRadius: '12px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
+        }}>
+          <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: '#1f2937' }}>Verify Your Email</h2>
+          <p style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '1.5rem' }}>
+            We've sent a 6-digit code to your email. Please enter it below.
           </p>
-        </form>
+          
+          <form onSubmit={onPressVerify} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <input 
+              value={code} 
+              placeholder="Enter 6-digit code" 
+              onChange={(e) => setCode(e.target.value)} 
+              required 
+              style={{ 
+                width: '100%',
+                padding: '0.75rem', 
+                fontSize: '1.2rem', 
+                border: '1px solid #d1d5db', 
+                borderRadius: '6px',
+                textAlign: 'center',
+                letterSpacing: '0.5rem',
+                boxSizing: 'border-box'
+              }}
+              disabled={isVerifying}
+              autoFocus
+              maxLength={6}
+            />
+            
+            {verificationError && (
+              <div style={{ 
+                padding: '0.75rem', 
+                backgroundColor: '#fee2e2', 
+                border: '1px solid #fecaca',
+                borderRadius: '6px',
+                color: '#991b1b',
+                fontSize: '0.9rem'
+              }}>
+                {verificationError}
+              </div>
+            )}
+            
+            <button 
+              type="submit" 
+              disabled={isVerifying || !code || code.length !== 6}
+              style={{ 
+                width: '100%',
+                padding: '0.75rem', 
+                fontSize: '1rem', 
+                backgroundColor: '#667eea', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '6px', 
+                cursor: (isVerifying || !code || code.length !== 6) ? 'not-allowed' : 'pointer',
+                opacity: (isVerifying || !code || code.length !== 6) ? 0.6 : 1,
+                fontWeight: 600
+              }}
+            >
+              {isVerifying ? 'Verifying...' : 'Verify Email'}
+            </button>
+            
+            <button 
+              type="button" 
+              onClick={resendCode}
+              style={{ 
+                width: '100%',
+                padding: '0.75rem',
+                background: 'transparent', 
+                color: '#667eea', 
+                border: '1px solid #667eea',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: 600
+              }}
+            >
+              Resend Code
+            </button>
+            
+            <p style={{ textAlign: 'center', fontSize: '0.9rem', margin: '0.5rem 0 0', color: '#6b7280' }}>
+              Already have an account? <Link to="/sign-in" style={{ color: '#667eea', textDecoration: 'none', fontWeight: 500 }}>Sign In</Link>
+            </p>
+          </form>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '400px', margin: 'auto' }}>
-      <h2>Create Your Account</h2>
-      <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        
-        {/* Role Selection */}
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <label>
-            <input type="radio" {...register('role')} value="donor" /> I am a Donor
-          </label>
-          <label>
-            <input type="radio" {...register('role')} value="staff" /> I am Blood Bank Staff
-          </label>
-        </div>
-        <hr />
-        
-        {/* Standard Inputs */}
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <div style={{ flex: 1 }}>
-            <input {...register('firstName')} type="text" placeholder="First Name" />
-            {errors.firstName && <p style={{ color: 'red' }}>{errors.firstName.message}</p>}
-          </div>
-          <div style={{ flex: 1 }}>
-            <input {...register('lastName')} type="text" placeholder="Last Name" />
-            {errors.lastName && <p style={{ color: 'red' }}>{errors.lastName.message}</p>}
-          </div>
-        </div>
-
-        <input {...register('email')} type="email" placeholder="Email" />
-        {errors.email && <p style={{ color: 'red', fontSize: '0.8rem' }}>{errors.email.message}</p>}
-        
-        <input {...register('password')} type="password" placeholder="Password (min 8 characters)" />
-        {errors.password && <p style={{ color: 'red', fontSize: '0.8rem' }}>{errors.password.message}</p>}
-
-        {/* Conditional Fields for Donors */}
-        {role === 'donor' && (
-          <>
-            <select {...register('blood_group')}>
-              <option value="">Select Blood Group...</option>
-              <option value="A+">A+</option>
-              <option value="A-">A-</option>
-              <option value="B+">B+</option>
-              <option value="B-">B-</option>
-              <option value="AB+">AB+</option>
-              <option value="AB-">AB-</option>
-              <option value="O+">O+</option>
-              <option value="O-">O-</option>
-            </select>
-            {errors.blood_group && <p style={{ color: 'red', fontSize: '0.8rem' }}>{errors.blood_group.message}</p>}
-            
-            <label>
-              Last Donation Date (optional):
-              <input {...register('last_donation_date')} type="date" />
-            </label>
-          </>
-        )}
-        
-        {/* Location Input Section */}
-        <div>
-          <label>Your Location:</label>
-          <button type="button" onClick={handleGetCurrentLocation} disabled={locationStatus === 'fetching'}>
-            {locationStatus === 'fetching' ? 'Getting Location...' : 'Get Current Location'}
-          </button>
-          {locationStatus === 'success' && <p style={{ color: 'green', fontSize: '0.8rem' }}>✓ Location captured!</p>}
-          {errors.location && <p style={{ color: 'red', fontSize: '0.8rem' }}>A valid location is required.</p>}
-        </div>
-
-        <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Signing Up...' : 'Sign Up'}
-        </button>
-        <p style={{ textAlign: 'center', fontSize: '0.9rem' }}>
-          Already have an account? <Link to="/sign-in" style={{ color: 'blue' }}>Sign In</Link>
+    <div style={{ 
+      minHeight: '100vh', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      padding: '2rem'
+    }}>
+      <div style={{ 
+        width: '100%', 
+        maxWidth: '400px', 
+        backgroundColor: 'white', 
+        padding: '2rem', 
+        borderRadius: '12px',
+        boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
+      }}>
+        <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: '#1f2937' }}>Create Your Account</h2>
+        <p style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '1.5rem' }}>
+          Join LifeLine and start saving lives
         </p>
-      </form>
+        
+        <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 500, color: '#374151' }}>
+              Email
+            </label>
+            <input 
+              {...register('email')} 
+              type="email" 
+              placeholder="your@email.com" 
+              style={{ 
+                width: '100%', 
+                padding: '0.75rem', 
+                fontSize: '1rem', 
+                border: '1px solid #d1d5db', 
+                borderRadius: '6px',
+                boxSizing: 'border-box'
+              }}
+            />
+            {errors.email && <p style={{ color: '#ef4444', fontSize: '0.85rem', margin: '0.25rem 0 0' }}>{errors.email.message}</p>}
+          </div>
+          
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 500, color: '#374151' }}>
+              Password
+            </label>
+            <input 
+              {...register('password')} 
+              type="password" 
+              placeholder="Min 8 characters" 
+              style={{ 
+                width: '100%', 
+                padding: '0.75rem', 
+                fontSize: '1rem', 
+                border: '1px solid #d1d5db', 
+                borderRadius: '6px',
+                boxSizing: 'border-box'
+              }}
+            />
+            {errors.password && <p style={{ color: '#ef4444', fontSize: '0.85rem', margin: '0.25rem 0 0' }}>{errors.password.message}</p>}
+          </div>
+
+          {signUpError && (
+            <div style={{ 
+              padding: '0.75rem', 
+              backgroundColor: '#fee2e2', 
+              border: '1px solid #fecaca',
+              borderRadius: '6px',
+              color: '#991b1b',
+              fontSize: '0.9rem'
+            }}>
+              {signUpError}
+            </div>
+          )}
+
+          <button 
+            type="submit" 
+            disabled={isSubmitting}
+            style={{ 
+              width: '100%',
+              padding: '0.75rem', 
+              fontSize: '1rem', 
+              backgroundColor: '#667eea', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '6px', 
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              opacity: isSubmitting ? 0.6 : 1,
+              marginTop: '0.5rem',
+              fontWeight: 600
+            }}
+          >
+            {isSubmitting ? 'Creating Account...' : 'Sign Up'}
+          </button>
+          
+          <p style={{ textAlign: 'center', fontSize: '0.9rem', margin: '1rem 0 0', color: '#6b7280' }}>
+            Already have an account? <Link to="/sign-in" style={{ color: '#667eea', textDecoration: 'none', fontWeight: 500 }}>Sign In</Link>
+          </p>
+        </form>
+      </div>
     </div>
   );
 };
