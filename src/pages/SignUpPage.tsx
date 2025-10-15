@@ -49,12 +49,11 @@ export const SignUpPage = () => {
       await signUp.create({
         emailAddress: data.email,
         password: data.password,
-        firstName: data.name.split(' ')[0] || '',
-        lastName: data.name.split(' ').slice(1).join(' ') || '',
         unsafeMetadata: {
+          name: data.name,
           role: data.role,
           blood_group: data.role === 'donor' ? data.blood_group : undefined,
-          location: data.location, // The location now comes from the form state
+          location: data.location,
           last_donation_date: data.last_donation_date || undefined,
         },
       });

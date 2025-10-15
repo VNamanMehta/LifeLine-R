@@ -3,30 +3,31 @@ import { createClient } from '@supabase/supabase-js';
 import { clerkClient } from '@clerk/clerk-sdk-node';
 import { z } from 'zod';
 
-const publicMetadataSchema = z.object({
+const metadataSchema = z.object({
+  name: z.string().optional(),
   role: z.string().optional(),
   blood_group: z.string().optional(),
   location: z.object({
     lat: z.number(),
     lng: z.number(),
   }),
+  last_donation_date: z.string().optional(),
   db_id: z.string().optional(),
 });
 
-// This interface helps TypeScript understand the shape of Clerk's event data
 interface UserCreatedEvent {
   data: {
     id: string;
     email_addresses: { email_address: string }[];
     first_name: string | null;
     last_name: string | null;
-    public_metadata: z.infer<typeof publicMetadataSchema>;
+    public_metadata: Partial<z.infer<typeof metadataSchema>>;
+    unsafe_metadata: Partial<z.infer<typeof metadataSchema>>;
   };
   object: 'event';
   type: 'user.created';
 }
 
-// Initialize Supabase client with the service role key
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -38,7 +39,6 @@ export async function POST(req: Request) {
     throw new Error('Please add WEBHOOK_SECRET from Clerk Dashboard to your environment variables.');
   }
 
-  // Get the headers
   const svix_id = req.headers.get("svix-id");
   const svix_timestamp = req.headers.get("svix-timestamp");
   const svix_signature = req.headers.get("svix-signature");
@@ -65,19 +65,19 @@ export async function POST(req: Request) {
   }
 
   if (evt.type === 'user.created') {
-    const { id, email_addresses, public_metadata, first_name, last_name } = evt.data;
+    const { id, email_addresses, public_metadata, unsafe_metadata } = evt.data;
 
-    const validation = publicMetadataSchema.safeParse(public_metadata);
+    const metadata = { ...public_metadata, ...unsafe_metadata };
+
+    const validation = metadataSchema.safeParse(metadata);
     if (!validation.success) {
-      console.error('Webhook Error: Invalid public_metadata.', validation.error.issues);
+      console.error('Webhook Error: Invalid metadata.', validation.error.issues);
       return new Response('Error: Invalid metadata provided.', { status: 400 });
     }
-    const { location, role, blood_group } = validation.data;
+    const { location, role, blood_group, name, last_donation_date } = validation.data;
 
     const clerkId = id;
     const email = email_addresses[0]?.email_address;
-    const name = `${first_name || ''} ${last_name || ''}`.trim() || 'New User';
-
     const locationString = `SRID=4326;POINT(${location.lng} ${location.lat})`;
 
     try {
@@ -86,10 +86,11 @@ export async function POST(req: Request) {
         .insert({
           clerk_id: clerkId,
           email: email,
-          name: name,
-          role: role || "donor",
+          name: name || 'New User',
+          role: role || 'donor',
           blood_group: blood_group,
           location: locationString,
+          last_donation_date: last_donation_date || null,
         })
         .select('id')
         .single();
@@ -100,7 +101,7 @@ export async function POST(req: Request) {
 
       await clerkClient.users.updateUserMetadata(clerkId, {
         publicMetadata: {
-          ...public_metadata,
+          ...metadata,
           db_id: newUser.id,
         },
       });
