@@ -50,7 +50,8 @@ export const SignUpPage = () => {
         emailAddress: data.email,
         password: data.password,
         unsafeMetadata: {
-          name: data.name,
+          firstName: data.firstName,
+          lastName: data.lastName,
           role: data.role,
           blood_group: data.role === 'donor' ? data.blood_group : undefined,
           location: data.location,
@@ -110,8 +111,16 @@ export const SignUpPage = () => {
         <hr />
         
         {/* Standard Inputs */}
-        <input {...register('name')} type="text" placeholder="Full Name" />
-        {errors.name && <p style={{ color: 'red', fontSize: '0.8rem' }}>{errors.name.message}</p>}
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <div style={{ flex: 1 }}>
+            <input {...register('firstName')} type="text" placeholder="First Name" />
+            {errors.firstName && <p style={{ color: 'red' }}>{errors.firstName.message}</p>}
+          </div>
+          <div style={{ flex: 1 }}>
+            <input {...register('lastName')} type="text" placeholder="Last Name" />
+            {errors.lastName && <p style={{ color: 'red' }}>{errors.lastName.message}</p>}
+          </div>
+        </div>
 
         <input {...register('email')} type="email" placeholder="Email" />
         {errors.email && <p style={{ color: 'red', fontSize: '0.8rem' }}>{errors.email.message}</p>}
