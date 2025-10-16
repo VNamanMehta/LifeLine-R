@@ -11,6 +11,13 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
+console.log('Environment Check:', {
+    supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+    hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY,
+    clerkKey: import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+    allEnvKeys: Object.keys(import.meta.env)
+  });
+
 const profileSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
