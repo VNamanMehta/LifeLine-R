@@ -5,6 +5,7 @@ import { SignInPage } from './pages/SignInPage';
 import { CompleteProfilePage } from './pages/CompleteProfilePage.tsx';
 import { DashboardPage } from './pages/DashboardPage';
 import { HomePage } from './pages/HomePage';
+import { ApolloProviderWithClerk } from './components/ApolloProviderWithClerk'
 
 function App() {
   return (
@@ -35,7 +36,9 @@ function App() {
           element={
             <>
               <SignedIn>
-                <DashboardPage />
+                <ApolloProviderWithClerk>
+                  <DashboardPage />
+                </ApolloProviderWithClerk>
               </SignedIn>
               <SignedOut>
                 <Navigate to="/sign-in" replace />

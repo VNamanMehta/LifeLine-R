@@ -1,15 +1,15 @@
-import { useUser } from '@clerk/clerk-react';
+import { useUser,useAuth } from '@clerk/clerk-react';
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
+// import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+// const supabase = createClient(
+//   import.meta.env.VITE_SUPABASE_URL,
+//   import.meta.env.VITE_SUPABASE_ANON_KEY
+// );
 
 const profileSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
@@ -35,9 +35,9 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 
 export const CompleteProfilePage = () => {
   const { user, isLoaded } = useUser();
+  const { getToken } = useAuth();
   const navigate = useNavigate();
   const [locationStatus, setLocationStatus] = useState<'idle' | 'fetching' | 'success' | 'error'>('idle');
-  const [isCheckingProfile, setIsCheckingProfile] = useState(true);
   const [submitError, setSubmitError] = useState('');
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<ProfileFormData>({
@@ -50,28 +50,13 @@ export const CompleteProfilePage = () => {
   const role = watch('role');
 
   useEffect(() => {
-    const checkProfile = async () => {
-      if (!isLoaded || !user) return;
-
-      try {
-        const { data } = await supabase
-          .from('users')
-          .select('id')
-          .eq('clerk_id', user.id)
-          .single();
-
-        if (data) {
-          navigate('/dashboard', { replace: true });
-        } else {
-          setIsCheckingProfile(false);
-        }
-      } catch (err) {
-        console.error('Error checking profile:', err);
-        setIsCheckingProfile(false);
+    if (isLoaded && user) {
+      // Check if the user's profile is already complete by looking for db_id
+      if (user.publicMetadata.db_id) {
+        // If it is, redirect them immediately to the dashboard
+        navigate('/dashboard', { replace: true });
       }
-    };
-
-    checkProfile();
+    }
   }, [isLoaded, user, navigate]);
 
   const handleGetCurrentLocation = () => {
@@ -97,49 +82,41 @@ export const CompleteProfilePage = () => {
   };
 
   const onSubmit = async (data: ProfileFormData) => {
-    if (!user) return;
-
     setSubmitError('');
     try {
-      const fullName = `${data.firstName} ${data.lastName}`.trim();
-      const locationString = `SRID=4326;POINT(${data.location.lng} ${data.location.lat})`;
+      // 3. Get the authentication token from Clerk
+      const token = await getToken();
 
-      const { error } = await supabase
-        .from('users')
-        .insert({
-          clerk_id: user.id,
-          email: user.primaryEmailAddress?.emailAddress,
-          name: fullName,
-          role: data.role,
-          blood_group: data.role === 'donor' ? data.blood_group : null,
-          location: locationString,
-          last_donation_date: data.last_donation_date || null,
-        });
-
-      if (error) {
-        if (error.code === '23505') {
-          console.log('Profile already exists');
-          navigate('/dashboard', { replace: true });
-          return;
-        }
-        throw error;
-      }
-
-      await user.update({
-        unsafeMetadata: {
-          profileCompleted: true,
-          role: data.role,
+      // 4. Send the form data to your secure serverless function
+      const response = await fetch('/api/create-profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`, // Include the token for authentication
         },
+        body: JSON.stringify(data),
       });
 
+      if (!response.ok) {
+        const res = await response.json();
+        throw new Error(res.error || 'Failed to create profile.');
+      }
+
+      // 5. Manually update Clerk's user object to sync the new metadata
+      // This ensures the ProtectedRoute works immediately without a page reload
+      if (user) {
+        await user.reload(); 
+      }
+
       navigate('/dashboard', { replace: true });
+
     } catch (err: any) {
       console.error('Error creating profile:', err);
-      setSubmitError(err.message || 'Failed to create profile. Please try again.');
+      setSubmitError(err.message);
     }
   };
 
-  if (!isLoaded || isCheckingProfile) {
+  if (!isLoaded) {
     return (
       <div style={{ 
         minHeight: '100vh', 
@@ -151,6 +128,10 @@ export const CompleteProfilePage = () => {
         <p style={{ color: 'white', fontSize: '1.1rem' }}>Loading...</p>
       </div>
     );
+  }
+
+  if (user?.publicMetadata.db_id) {
+    return null;
   }
 
   return (
