@@ -1,13 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useUser } from '@clerk/clerk-react';
 
-console.log('Environment Check:', {
-    supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-    hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY,
-    clerkKey: import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-    allEnvKeys: Object.keys(import.meta.env)
-  });
-
 export const HomePage = () => {
   const { isSignedIn } = useUser();
 
