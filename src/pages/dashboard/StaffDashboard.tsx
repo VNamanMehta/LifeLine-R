@@ -1,10 +1,10 @@
 import { useUser, useAuth } from '@clerk/clerk-react';
 import { useQuery } from '@apollo/client/react';
-import { GET_DONOR_DASHBOARD_DATA } from '../graphql/queries';
-import { type DashboardQueryData } from '../types';
+import { GET_DONOR_DASHBOARD_DATA } from '../../graphql/queries';
+import { type DashboardQueryData } from '../../types';
 import { useEffect } from 'react';
 
-export const DashboardPage = () => {
+export const StaffDashboard = () => {
   const { user } = useUser();
   const { getToken } = useAuth();
   const dbUserId = user?.publicMetadata.db_id as string;

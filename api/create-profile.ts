@@ -53,6 +53,7 @@ export async function POST(req: Request) {
     const fullName = `${firstName} ${lastName}`.trim();
     const locationString = `SRID=4326;POINT(${location.lng} ${location.lat})`;
 
+    const isApproved = role === 'donor';
     // Insert user into Supabase
     const { data: newUser, error } = await supabase
       .from('users')
@@ -64,6 +65,7 @@ export async function POST(req: Request) {
         blood_group: role === 'donor' ? blood_group : null,
         location: locationString,
         last_donation_date: last_donation_date || null,
+        is_approved: isApproved,
       })
       .select('id')
       .single();
@@ -75,10 +77,18 @@ export async function POST(req: Request) {
       publicMetadata: {
         db_id: newUser.id,
         role: role,
+        is_approved: isApproved,
       },
     });
 
-    return new Response(JSON.stringify({ success: true, userId: newUser.id }), { status: 200 });
+    return new Response(JSON.stringify({ 
+      success: true, 
+      userId: newUser.id, 
+      is_approved: isApproved,
+      message: role === "staff"
+      ? "Profile created! Your account is pending admin approval."
+      : "Profile created successfully!"
+    }), { status: 200 });
 
   } catch (error: any) {
     console.error('Error in create-profile:', error);
