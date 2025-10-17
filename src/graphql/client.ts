@@ -7,15 +7,15 @@ export const createApolloClient = (getToken: (options?: { template?: string }) =
     uri: import.meta.env.VITE_HASURA_GRAPHQL_ENDPOINT,
   });
 
-  const authLink = new SetContextLink(async (operation, _) => {
-    const token = await getToken({ template: 'Hasura' });
+  // This is the simplest and most robust solution.
+  // We don't need to access the operation or context arguments.
+  const authLink = new SetContextLink(async () => {
+    const token = await getToken({ template: 'hasura' });
 
-    const context = operation.getContext();
-    const headers = context.headers || {};
-
+    // Return a context object with just the headers we need to set.
+    // Apollo Client will automatically handle merging this with any existing context.
     return {
       headers: {
-        ...headers,
         authorization: token ? `Bearer ${token}` : '',
       },
     };

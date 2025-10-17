@@ -1,15 +1,9 @@
-import { useUser,useAuth } from '@clerk/clerk-react';
+import { useUser, useAuth } from '@clerk/clerk-react';
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate } from 'react-router-dom';
-// import { createClient } from '@supabase/supabase-js';
-
-// const supabase = createClient(
-//   import.meta.env.VITE_SUPABASE_URL,
-//   import.meta.env.VITE_SUPABASE_ANON_KEY
-// );
 
 const profileSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
@@ -49,13 +43,10 @@ export const CompleteProfilePage = () => {
 
   const role = watch('role');
 
+  // FIX: Redirect existing users to dashboard
   useEffect(() => {
-    if (isLoaded && user) {
-      // Check if the user's profile is already complete by looking for db_id
-      if (user.publicMetadata.db_id) {
-        // If it is, redirect them immediately to the dashboard
-        navigate('/dashboard', { replace: true });
-      }
+    if (isLoaded && user?.publicMetadata.db_id) {
+      navigate('/dashboard', { replace: true });
     }
   }, [isLoaded, user, navigate]);
 
@@ -84,15 +75,13 @@ export const CompleteProfilePage = () => {
   const onSubmit = async (data: ProfileFormData) => {
     setSubmitError('');
     try {
-      // 3. Get the authentication token from Clerk
       const token = await getToken();
 
-      // 4. Send the form data to your secure serverless function
       const response = await fetch('/api/create-profile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // Include the token for authentication
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(data),
       });
@@ -102,8 +91,6 @@ export const CompleteProfilePage = () => {
         throw new Error(res.error || 'Failed to create profile.');
       }
 
-      // 5. Manually update Clerk's user object to sync the new metadata
-      // This ensures the ProtectedRoute works immediately without a page reload
       if (user) {
         await user.reload(); 
       }
@@ -130,8 +117,19 @@ export const CompleteProfilePage = () => {
     );
   }
 
+  // Don't render the form if user already has a profile (redirect will happen)
   if (user?.publicMetadata.db_id) {
-    return null;
+    return (
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      }}>
+        <p style={{ color: 'white', fontSize: '1.1rem' }}>Redirecting...</p>
+      </div>
+    );
   }
 
   return (
@@ -158,7 +156,6 @@ export const CompleteProfilePage = () => {
         
         <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           
-          {/* Role Selection */}
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, color: '#374151' }}>I am a:</label>
             <div style={{ display: 'flex', gap: '1.5rem' }}>
@@ -175,7 +172,6 @@ export const CompleteProfilePage = () => {
 
           <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '0.25rem 0' }} />
           
-          {/* Name Fields */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 500, color: '#374151' }}>
@@ -217,7 +213,6 @@ export const CompleteProfilePage = () => {
             </div>
           </div>
 
-          {/* Conditional Fields for Donors */}
           {role === 'donor' && (
             <>
               <div>
@@ -273,7 +268,6 @@ export const CompleteProfilePage = () => {
             </>
           )}
           
-          {/* Location */}
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 500, color: '#374151' }}>
               Your Location *

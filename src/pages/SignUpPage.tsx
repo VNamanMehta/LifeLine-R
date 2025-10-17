@@ -55,7 +55,12 @@ export const SignUpPage = () => {
       
       if (completeSignUp.status === 'complete') {
         await setActive({ session: completeSignUp.createdSessionId });
-        navigate('/complete-profile', { replace: true });
+        
+        // Force navigation after session is set
+        // Use setTimeout to ensure Clerk has updated the session state
+        setTimeout(() => {
+          navigate('/complete-profile', { replace: true });
+        }, 100);
       } else {
         setVerificationError('Verification incomplete. Please try again.');
       }
@@ -65,7 +70,9 @@ export const SignUpPage = () => {
       if (err.errors?.[0]?.code === 'verification_already_verified') {
         if (signUp.createdSessionId) {
           await setActive({ session: signUp.createdSessionId });
-          navigate('/complete-profile', { replace: true });
+          setTimeout(() => {
+            navigate('/complete-profile', { replace: true });
+          }, 100);
           return;
         }
         setVerificationError('Already verified. Try signing in instead.');

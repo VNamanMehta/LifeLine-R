@@ -33,7 +33,12 @@ export const SignInPage = () => {
 
       if (result.status === 'complete') {
         await setActive({ session: result.createdSessionId });
-        navigate('/dashboard');
+        
+        // Force navigation after session is set
+        // Use setTimeout to ensure Clerk has updated the session state
+        setTimeout(() => {
+          navigate('/dashboard', { replace: true });
+        }, 100);
       } else {
         console.log('Sign in result:', result);
       }
